@@ -209,48 +209,8 @@
             </div>
           </div>
           <div class="topbar">
-            <button class="btn" id="stockSearchBtn">Stok Ara</button>
-            <span class="small">Proxy gerekli → <span class="kbd">/api/proxy/stock</span> (Vercel/Worker). Anahtar tarayıcıya konmaz.</span>
-          </div>
-          <div id="stockThumbs" class="thumbs"></div>
-        </div>
-
-        <!-- AI -->
-        <div id="aiBlock" style="display:none">
-          <div class="row">
-            <div>
-              <label>Model</label>
-              <select id="aiModel">
-                <option value="gpt-image-1" selected>OpenAI (gpt-image-1)</option>
-                <option value="sdxl">SDXL (proxy)</option>
-                <option value="flux">Flux (proxy)</option>
-              </select>
-            </div>
-            <div>
-              <label>Çözünürlük</label>
-              <select id="aiSize">
-                <option value="1024x1024" selected>1024×1024</option>
-                <option value="1024x1536">1024×1536</option>
-                <option value="1536x1024">1536×1024</option>
-              </select>
-            </div>
-          </div>
-          <label>Prompt</label>
-          <input id="aiPrompt" type="text" placeholder="örn. mystical forest at dawn, soft fog, volumetric light"/>
-          <label>Negative Prompt (ops.)</label>
-          <input id="aiNegative" type="text" placeholder="low quality, blurry"/>
-          <div class="row">
-            <div>
-              <label>Seed</label>
-              <input id="aiSeed" type="number" placeholder="boş = random"/>
-            </div>
-            <div>
-              <label>Varyant</label>
-              <input id="aiSteps" type="number" value="30"/>
-            </div>
-          </div>
-          <div class="topbar">
             <button class="btn" id="aiGenBtn">Görsel Üret</button>
+            <button class="btn ghost" id="aiTestBtn">AI Test</button>
             <span class="small">Proxy → <span class="kbd">/api/proxy/ai</span>. (Sunucu tarafında model API anahtarları saklanır.)</span>
           </div>
           <div id="aiStatus" class="small"></div>
@@ -599,7 +559,7 @@ async function aiGenerate(){
   el('aiStatus').textContent = 'Üretiliyor…';
   try{
     const r = await fetch('/api/proxy/ai', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-    if(!r.ok){ const txt = await r.text().catch(()=> ''); throw new Error(`HTTP ${r.status}${txt? ' — '+txt.slice(0,200):''}`); }
+    if(!r.ok){ let raw=''; try{ raw=await r.text(); }catch{} let extra=''; try{ const j = raw? JSON.parse(raw):null; if(j){ extra=[j.error,j.details].filter(Boolean).join(' — '); } }catch{} const tail = extra || (raw? raw.slice(0,200):''); throw new Error(`HTTP ${r.status}${tail? ' — '+tail : ''}`); }
     const data = await r.json();
     const img = new Image();
     img.onload = ()=>{ state.aiImage = img; state.source='ai'; el('source').value='ai'; toggleBlocks(); drawPreview(); el('aiStatus').textContent='Hazır.'; };
@@ -673,6 +633,15 @@ el('stockSearchBtn').addEventListener('click', stockSearch);
 el('demoMode').addEventListener('change', ()=>{ if(el('demoMode').value==='mock'){ stockSearch(); el('healthStatus').innerHTML='<span class="ok">MOCK aktif</span>'; } });
 
 el('aiGenBtn').addEventListener('click', aiGenerate);
+el('aiTestBtn').addEventListener('click', async ()=>{
+  el('aiStatus').textContent='AI Test: çalışıyor…';
+  try{
+    const r = await fetch('/api/proxy/ai', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ model:'gpt-image-1', size:'1024x1024', prompt:'health check' }) });
+    const ok = r.ok; let msg = ok? 'OK' : `HTTP ${r.status}`; let body=''; try{ body = await r.text(); }catch{}
+    if(!ok){ try{ const j = JSON.parse(body); if(j?.error) msg += ' — '+j.error; if(j?.details) msg += ' — '+j.details; }catch{ if(body) msg += ' — '+body.slice(0,200); } }
+    el('aiStatus').textContent='AI Test: '+msg;
+  }catch(e){ el('aiStatus').textContent='AI Test: '+e.message; }
+});
 ;['aiModel','aiSize','aiPrompt'].forEach(id=>{ const n=el(id); if(n) n.addEventListener('input', refreshAIHint); });
 refreshAIHint();
 
