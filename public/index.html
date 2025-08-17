@@ -209,7 +209,7 @@
           </div>
           <div class="topbar">
             <button class="btn" id="stockSearchBtn">Stok Ara</button>
-            <span class="small">Proxy gerekli → <span class="kbd">/proxy/stock</span> (Vercel/Worker). Anahtar tarayıcıya konmaz.</span>
+            <span class="small">Proxy gerekli → <span class="kbd">/api/proxy/stock</span> (Vercel/Worker). Anahtar tarayıcıya konmaz.</span>
           </div>
           <div id="stockThumbs" class="thumbs"></div>
         </div>
@@ -250,7 +250,7 @@
           </div>
           <div class="topbar">
             <button class="btn" id="aiGenBtn">Görsel Üret</button>
-            <span class="small">Proxy → <span class="kbd">/proxy/ai</span>. (Sunucu tarafında model API anahtarları saklanır.)</span>
+            <span class="small">Proxy → <span class="kbd">/api/proxy/ai</span>. (Sunucu tarafında model API anahtarları saklanır.)</span>
           </div>
           <div id="aiStatus" class="small"></div>
         </div>
@@ -304,8 +304,10 @@
 
       <details>
         <summary class="small">Proxy kurulum notları</summary>
-        <pre class="small">/proxy/stock → Unsplash/Pexels: ENV: UNSPLASH_KEY, PEXELS_KEY
-/proxy/ai    → SDXL/Flux/OpenAI: ENV: SAĞLAYICI_KEY
+        <pre class="small">Rewrite yok; doğrudan /api/proxy/* kullanıyoruz.
+
+/api/proxy/ai     → OpenAI Images (gpt-image-1)
+/api/proxy/stock  → Unsplash/Pexels
 
 OpenAI Images (gpt-image-1) örnek body:
 {
@@ -521,7 +523,7 @@ el('healthStock').addEventListener('click', async ()=>{
   el('healthStatus').textContent = 'Stock: kontrol ediliyor…';
   try{
     if(el('demoMode').value==='mock'){ el('healthStatus').innerHTML = '<span class="ok">Stock: MOCK hazır</span>'; return; }
-    const r = await fetch('/proxy/stock', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({provider:'unsplash', q:'test', orientation:'landscape', count:1})});
+    const r = await fetch('/api/proxy/stock', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({provider:'unsplash', q:'test', orientation:'landscape', count:1})});
     el('healthStatus').innerHTML = r.ok? '<span class="ok">Stock: OK</span>' : '<span class="err">Stock: '+r.status+'</span>';
   }catch(e){ el('healthStatus').innerHTML = '<span class="err">Stock: '+e.message+'</span>'; }
 });
@@ -530,7 +532,7 @@ el('healthAI').addEventListener('click', async ()=>{
   el('healthStatus').textContent = 'AI: kontrol ediliyor…';
   try{
     if(el('demoMode').value==='mock'){ el('healthStatus').innerHTML = '<span class="ok">AI: MOCK hazır</span>'; return; }
-    const r = await fetch('/proxy/ai', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({model:'gpt-image-1', prompt:'ping', size:'1024x1024'})});
+    const r = await fetch('/api/proxy/ai', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({model:'gpt-image-1', prompt:'ping', size:'1024x1024'})});
     el('healthStatus').innerHTML = r.ok? '<span class="ok">AI: OK</span>' : '<span class="err">AI: '+r.status+'</span>';
   }catch(e){ el('healthStatus').innerHTML = '<span class="err">AI: '+e.message+'</span>'; }
 });
@@ -562,7 +564,7 @@ async function stockSearch(){
     return;
   }
 
-  const r = await fetch('/proxy/stock', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({provider,q,orientation,color,count}) });
+  const r = await fetch('/api/proxy/stock', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({provider,q,orientation,color,count}) });
   if(!r.ok){ alert('Proxy hata: '+r.status); return; }
   const data = await r.json(); const items = (data && data.items) ? data.items : [];
   renderStock(items);
@@ -609,7 +611,7 @@ async function aiGenerate(){
   }
 
   try{
-    const r = await fetch('/proxy/ai', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+    const r = await fetch('/api/proxy/ai', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const data = await r.json();
     const img = new Image();
@@ -647,6 +649,8 @@ el('bgVideoFile').addEventListener('change', (e)=>{
 });
 
 el('stockSearchBtn').addEventListener('click', stockSearch);
+// DemoMode değişince mock ise grid'i her zaman doldur
+el('demoMode').addEventListener('change', ()=>{ if(el('demoMode').value==='mock'){ stockSearch(); el('healthStatus').innerHTML='<span class="ok">MOCK aktif</span>'; } });
 
 el('aiGenBtn').addEventListener('click', aiGenerate);
 
@@ -675,8 +679,9 @@ hiddenVideo.addEventListener('pause', ()=>{ if(animId){ cancelAnimationFrame(ani
   t('wordCount trims & splits', ()=>{ if(wordCount('  a  b c ')!==3) throw new Error('expected 3'); });
   t('source change toggles to stock', ()=>{ el('source').value='stock'; toggleBlocks(); if(getComputedStyle(el('stockBlock')).display!=='block') throw new Error('stockBlock not visible'); el('source').value='local'; toggleBlocks(); });
   t('demoMode mock makes mock items', async ()=>{ el('demoMode').value='mock'; el('stockThumbs').innerHTML=''; await stockSearch(); const after = document.querySelectorAll('#stockThumbs > *').length; if(!(after>0)) throw new Error('mock fill failed'); el('demoMode').value='live'; });
-  // NEW: ensure mock respects requested count
   t('mock stock respects count=5', async ()=>{ el('demoMode').value='mock'; el('stockProvider').value='unsplash'; el('stockCount').value='5'; el('stockThumbs').innerHTML=''; await stockSearch(); const c = document.querySelectorAll('#stockThumbs > *').length; if(c!==5) throw new Error('expected 5, got '+c); el('demoMode').value='live'; });
+  // NEW: Mock fills regardless of source
+  t('mock fills regardless of source', async ()=>{ el('demoMode').value='mock'; el('source').value='local'; el('stockThumbs').innerHTML=''; await stockSearch(); const c = document.querySelectorAll('#stockThumbs > *').length; if(c===0) throw new Error('no items when source=local'); el('demoMode').value='live'; });
   
   setTimeout(()=>{ console.log('[Self-tests]', results.join(' | ')); }, 0);
 })();
