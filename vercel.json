@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "functions": { "api/proxy/*.js": { "runtime": "edge" } },
+  "routes": [
+    { "src": "/proxy/ai", "dest": "/api/proxy/ai.js" },
+    { "src": "/proxy/stock", "dest": "/api/proxy/stock.js" }
+  ],
+  "headers": [
+    { "source": "/proxy/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ]
+}
