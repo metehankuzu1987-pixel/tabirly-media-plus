@@ -195,6 +195,7 @@
               </select>
             </div>
           </div>
+          <div id="aiHint" class="small muted"></div>
           <label>Prompt / Arama</label>
           <input id="stockQuery" type="text" placeholder="ör. orman sisli şafak" />
           <div class="row">
@@ -220,9 +221,9 @@
             <div>
               <label>Model</label>
               <select id="aiModel">
-                <option value="sdxl" selected>SDXL</option>
-                <option value="flux">Flux</option>
-                <option value="gpt-image-1">OpenAI (gpt-image-1)</option>
+                <option value="gpt-image-1" selected>OpenAI (gpt-image-1)</option>
+                <option value="sdxl">SDXL (proxy)</option>
+                <option value="flux">Flux (proxy)</option>
               </select>
             </div>
             <div>
@@ -591,28 +592,14 @@ function renderStock(items){
 
 // -------- AI GENERATION --------
 async function aiGenerate(){
-  // keep state in sync with UI
-  gather();
-  const body = {
-    model: el('aiModel').value,
-    size: el('aiSize').value,
-    prompt: el('aiPrompt').value,
-    negative: el('aiNegative').value,
-    seed: el('aiSeed').value? Number(el('aiSeed').value): undefined,
-    steps: Number(el('aiSteps').value)||30
-  };
+  const norm = normalizeAIParams();
+  if(norm && norm.error==='prompt_required'){ el('aiStatus').textContent='Lütfen prompt girin.'; refreshAIHint(); return; }
+  const { body, notes } = norm;
+  const hint = el('aiHint'); if(hint) hint.textContent = (notes||[]).join(' ');
   el('aiStatus').textContent = 'Üretiliyor…';
-
-  const demo = el('demoMode').value;
-  if(demo==='mock'){
-    const mockUrl = await makeMockAIImage(body.prompt || 'AI MOCK');
-    const img = new Image(); img.onload=()=>{ state.aiImage=img; state.source='ai'; el('source').value='ai'; toggleBlocks(); drawPreview(); el('aiStatus').textContent='Mock görsel hazır.'; };
-    img.crossOrigin='anonymous'; img.src = mockUrl; return;
-  }
-
   try{
     const r = await fetch('/api/proxy/ai', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(!r.ok){ const txt = await r.text().catch(()=> ''); throw new Error(`HTTP ${r.status}${txt? ' — '+txt.slice(0,200):''}`); }
     const data = await r.json();
     const img = new Image();
     img.onload = ()=>{ state.aiImage = img; state.source='ai'; el('source').value='ai'; toggleBlocks(); drawPreview(); el('aiStatus').textContent='Hazır.'; };
@@ -621,6 +608,39 @@ async function aiGenerate(){
   } catch(err){
     el('aiStatus').textContent = 'Hata: '+err.message;
   }
+}
+
+function normalizeAIParams(){
+  const modelRaw = el('aiModel')?.value || 'gpt-image-1';
+  const sizeRaw = el('aiSize')?.value || '1024x1024';
+  const prompt = (el('aiPrompt')?.value || '').trim();
+  const negative = el('aiNegative')?.value || '';
+  const seed = el('aiSeed')?.value ? Number(el('aiSeed').value) : undefined;
+  const steps = Number(el('aiSteps')?.value)||30;
+  const notes = [];
+  if(!prompt) return { error:'prompt_required' };
+  let model = modelRaw;
+  let size = sizeRaw;
+  if(model !== 'gpt-image-1'){
+    notes.push('Bu demo şu an OpenAI ile çalışıyor; model gpt-image-1 olarak ayarlanacak.');
+    model = 'gpt-image-1';
+  }
+  const allowed = new Set(['256x256','512x512','1024x1024']);
+  if(model==='gpt-image-1' && !allowed.has(size)){
+    notes.push('OpenAI yalnızca kare boyutları destekler; 1024×1024 kullanılacak.');
+    size = '1024x1024';
+  }
+  return { body:{ model,size,prompt,negative,seed,steps }, notes };
+}
+
+function refreshAIHint(){
+  const model = el('aiModel')?.value;
+  const size = el('aiSize')?.value;
+  let msg='';
+  if(model && model!=='gpt-image-1') msg += 'Bu demo OpenAI ile çalışır; seçilen model gpt-image-1\'e çevrilecek. ';
+  const allowed = new Set(['256x256','512x512','1024x1024']);
+  if(model==='gpt-image-1' && size && !allowed.has(size)) msg += 'OpenAI kare boyut ister; 1024×1024 kullanılacak.';
+  const hint = el('aiHint'); if(hint) hint.textContent = msg;
 }
 
 async function makeMockAIImage(text){
@@ -653,6 +673,8 @@ el('stockSearchBtn').addEventListener('click', stockSearch);
 el('demoMode').addEventListener('change', ()=>{ if(el('demoMode').value==='mock'){ stockSearch(); el('healthStatus').innerHTML='<span class="ok">MOCK aktif</span>'; } });
 
 el('aiGenBtn').addEventListener('click', aiGenerate);
+;['aiModel','aiSize','aiPrompt'].forEach(id=>{ const n=el(id); if(n) n.addEventListener('input', refreshAIHint); });
+refreshAIHint();
 
 document.getElementById('pngBtn').addEventListener('click', ()=>exportPNG(true));
 document.getElementById('pngTabBtn').addEventListener('click', ()=>exportPNG(false));
@@ -675,14 +697,16 @@ hiddenVideo.addEventListener('pause', ()=>{ if(animId){ cancelAnimationFrame(ani
 (function selfTests(){
   const results = [];
   function t(name, fn){ try { const r = fn(); if(r instanceof Promise){ r.then(()=>results.push('✅ '+name)).catch(e=>results.push('❌ '+name+' — '+e.message)); } else { results.push('✅ '+name); } } catch(e){ results.push('❌ '+name+' — '+e.message); } }
-  
+
   t('wordCount trims & splits', ()=>{ if(wordCount('  a  b c ')!==3) throw new Error('expected 3'); });
   t('source change toggles to stock', ()=>{ el('source').value='stock'; toggleBlocks(); if(getComputedStyle(el('stockBlock')).display!=='block') throw new Error('stockBlock not visible'); el('source').value='local'; toggleBlocks(); });
   t('demoMode mock makes mock items', async ()=>{ el('demoMode').value='mock'; el('stockThumbs').innerHTML=''; await stockSearch(); const after = document.querySelectorAll('#stockThumbs > *').length; if(!(after>0)) throw new Error('mock fill failed'); el('demoMode').value='live'; });
   t('mock stock respects count=5', async ()=>{ el('demoMode').value='mock'; el('stockProvider').value='unsplash'; el('stockCount').value='5'; el('stockThumbs').innerHTML=''; await stockSearch(); const c = document.querySelectorAll('#stockThumbs > *').length; if(c!==5) throw new Error('expected 5, got '+c); el('demoMode').value='live'; });
-  // NEW: Mock fills regardless of source
   t('mock fills regardless of source', async ()=>{ el('demoMode').value='mock'; el('source').value='local'; el('stockThumbs').innerHTML=''; await stockSearch(); const c = document.querySelectorAll('#stockThumbs > *').length; if(c===0) throw new Error('no items when source=local'); el('demoMode').value='live'; });
-  
+  // NEW: AI normalization tests
+  t('AI normalize coerces model & size for OpenAI', ()=>{ el('aiModel').value='sdxl'; el('aiSize').value='1536x1024'; el('aiPrompt').value='x'; const n = normalizeAIParams(); if(n.body.model!=='gpt-image-1') throw new Error('model not coerced'); if(n.body.size!=='1024x1024') throw new Error('size not coerced'); });
+  t('AI normalize requires prompt', ()=>{ el('aiModel').value='gpt-image-1'; el('aiSize').value='1024x1024'; el('aiPrompt').value=''; const n = normalizeAIParams(); if(!n || n.error!=='prompt_required') throw new Error('should require prompt'); });
+
   setTimeout(()=>{ console.log('[Self-tests]', results.join(' | ')); }, 0);
 })();
 </script>
