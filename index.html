@@ -195,6 +195,75 @@
               </select>
             </div>
           </div>
+          <label>Prompt / Arama</label>
+          <input id="stockQuery" type="text" placeholder="ör. orman sisli şafak" />
+          <div class="row">
+            <div>
+              <label>Renk (opsiyonel)</label>
+              <input id="stockColor" type="text" placeholder="ör. teal, black, #ffcc00"/>
+            </div>
+            <div>
+              <label>Sonuç Sayısı</label>
+              <input id="stockCount" type="number" min="3" max="24" value="9"/>
+            </div>
+          </div>
+          <div class="topbar">
+            <button class="btn" id="stockSearchBtn">Stok Ara</button>
+            <span class="small">Proxy → <span class="kbd">/api/proxy/stock</span>. (Unsplash/Pexels anahtarları sunucuda saklanır.)</span>
+          </div>
+          <div id="stockThumbs" class="thumbs"></div>
+        </div>
+
+        <!-- AI -->
+        <div id="aiBlock" style="display:none">
+          <div class="row">
+            <div>
+              <label>Model</label>
+              <select id="aiModel">
+                <option value="gpt-image-1" selected>OpenAI (gpt-image-1)</option>
+                <option value="sdxl">SDXL (proxy)</option>
+                <option value="flux">Flux (proxy)</option>
+              </select>
+            </div>
+            <div>
+              <label>Boyut</label>
+              <select id="aiSize">
+                <option value="256x256">256×256</option>
+                <option value="512x512">512×512</option>
+                <option value="1024x1024" selected>1024×1024</option>
+              </select>
+            </div>
+          </div>
+          <div id="aiHint" class="small muted"></div>
+          <label>Prompt</label>
+          <textarea id="aiPrompt" placeholder="ör. misty forest, volumetric light"></textarea>
+          <div class="row">
+            <div>
+              <label>Negative Prompt (ops.)</label>
+              <input id="aiNegative" type="text" placeholder="ör. low quality, blurry"/>
+            </div>
+            <div>
+              <label>Seed (ops.)</label>
+              <input id="aiSeed" type="number" min="0" placeholder="rastgele"/>
+            </div>
+          </div>
+          <div class="topbar">
+            <button class="btn" id="aiGenBtn">Görsel Üret</button>
+            <button class="btn ghost" id="aiTestBtn">AI Test</button>
+            <span class="small">Proxy → <span class="kbd">/api/proxy/ai</span>. (Model API anahtarları sunucuda saklanır.)</span>
+          </div>
+          <div id="aiStatus" class="small"></div>
+        </div>
+            <div>
+              <label>Yönelim</label>
+              <select id="stockOrientation">
+                <option value="any" selected>Farketmez</option>
+                <option value="landscape">Yatay</option>
+                <option value="portrait">Dikey</option>
+                <option value="square">Kare</option>
+              </select>
+            </div>
+          </div>
           <div id="aiHint" class="small muted"></div>
           <label>Prompt / Arama</label>
           <input id="stockQuery" type="text" placeholder="ör. orman sisli şafak" />
@@ -667,12 +736,23 @@ hiddenVideo.addEventListener('pause', ()=>{ if(animId){ cancelAnimationFrame(ani
   const results = [];
   function t(name, fn){ try { const r = fn(); if(r instanceof Promise){ r.then(()=>results.push('✅ '+name)).catch(e=>results.push('❌ '+name+' — '+e.message)); } else { results.push('✅ '+name); } } catch(e){ results.push('❌ '+name+' — '+e.message); } }
 
+  // Basic utils
   t('wordCount trims & splits', ()=>{ if(wordCount('  a  b c ')!==3) throw new Error('expected 3'); });
+
+  // UI presence
+  t('Stock UI elements exist', ()=>{ ['stockSearchBtn','stockThumbs','stockQuery'].forEach(id=>{ if(!document.getElementById(id)) throw new Error(id+' missing'); }); });
+  t('AI UI elements exist', ()=>{ ['aiPrompt','aiModel','aiSize','aiGenBtn'].forEach(id=>{ if(!document.getElementById(id)) throw new Error(id+' missing'); }); });
+
+  // Panel toggle
   t('source change toggles to stock', ()=>{ el('source').value='stock'; toggleBlocks(); if(getComputedStyle(el('stockBlock')).display!=='block') throw new Error('stockBlock not visible'); el('source').value='local'; toggleBlocks(); });
+  t('source change toggles to ai', ()=>{ el('source').value='ai'; toggleBlocks(); if(getComputedStyle(el('aiBlock')).display!=='block') throw new Error('aiBlock not visible'); el('source').value='local'; toggleBlocks(); });
+
+  // Mock stock flows
   t('demoMode mock makes mock items', async ()=>{ el('demoMode').value='mock'; el('stockThumbs').innerHTML=''; await stockSearch(); const after = document.querySelectorAll('#stockThumbs > *').length; if(!(after>0)) throw new Error('mock fill failed'); el('demoMode').value='live'; });
   t('mock stock respects count=5', async ()=>{ el('demoMode').value='mock'; el('stockProvider').value='unsplash'; el('stockCount').value='5'; el('stockThumbs').innerHTML=''; await stockSearch(); const c = document.querySelectorAll('#stockThumbs > *').length; if(c!==5) throw new Error('expected 5, got '+c); el('demoMode').value='live'; });
   t('mock fills regardless of source', async ()=>{ el('demoMode').value='mock'; el('source').value='local'; el('stockThumbs').innerHTML=''; await stockSearch(); const c = document.querySelectorAll('#stockThumbs > *').length; if(c===0) throw new Error('no items when source=local'); el('demoMode').value='live'; });
-  // NEW: AI normalization tests
+
+  // AI normalization
   t('AI normalize coerces model & size for OpenAI', ()=>{ el('aiModel').value='sdxl'; el('aiSize').value='1536x1024'; el('aiPrompt').value='x'; const n = normalizeAIParams(); if(n.body.model!=='gpt-image-1') throw new Error('model not coerced'); if(n.body.size!=='1024x1024') throw new Error('size not coerced'); });
   t('AI normalize requires prompt', ()=>{ el('aiModel').value='gpt-image-1'; el('aiSize').value='1024x1024'; el('aiPrompt').value=''; const n = normalizeAIParams(); if(!n || n.error!=='prompt_required') throw new Error('should require prompt'); });
 
