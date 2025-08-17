@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "functions": { "api/proxy/*.js": { "runtime": "edge" } },
   "rewrites": [
     { "source": "/proxy/ai", "destination": "/api/proxy/ai.js" },
     { "source": "/proxy/stock", "destination": "/api/proxy/stock.js" }
